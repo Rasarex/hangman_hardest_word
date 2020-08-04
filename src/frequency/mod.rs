@@ -1,6 +1,6 @@
+use std::collections::HashMap;
 use std::sync::mpsc;
 use std::thread;
-use std::collections::HashMap;
 
 const MULTI_THRESHOLD: usize = 32;
 
