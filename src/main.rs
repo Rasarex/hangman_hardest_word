@@ -19,7 +19,7 @@ struct Pattern {
     pub pattern: String,
     pub blanks: u32,
 }
-fn guess(word: &str, word_list: &[String]) -> Result<u32, Box<CmdError>> {
+fn guess(word: &str, word_list: &[String]) -> Result<u32, Box<dyn std::error::Error>> {
     let mut quesses = 0_u32;
     let mut guessed: String = String::from("");
     let lowercase_word = &word.to_ascii_lowercase();
@@ -50,10 +50,7 @@ fn guess(word: &str, word_list: &[String]) -> Result<u32, Box<CmdError>> {
             if let Some(lett) = iterator.next() {
                 letter = *lett.0;
             } else {
-                println!("{:?}", words);
-                println!("{}", lowercase_word);
-                println!("{}", match_pattern.pattern);
-                panic!("Should've not happend");
+                return Err(Box::new(CmdError::NoSuchWord));
             }
 
             guessed.push(letter);
@@ -75,8 +72,8 @@ fn guess(word: &str, word_list: &[String]) -> Result<u32, Box<CmdError>> {
                     break 'outer;
                 }
             } else {
-                let reg = Regex::new(match_pattern.pattern.as_str())
-                    .expect("Incorrect regex, logic of program failed");
+                let reg = Regex::new(match_pattern.pattern.as_str())?;
+                    // .expect("Incorrect regex, logic of program failed");
                 words.drain_filter(|v| !reg.is_match(v));
                 //use not filtered words ...
                 if words.is_empty() {
@@ -97,7 +94,7 @@ fn guess(word: &str, word_list: &[String]) -> Result<u32, Box<CmdError>> {
     Ok(quesses)
 }
 use std::fmt;
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 enum CmdError {
     IterDefault,
     InputDefault,
@@ -105,6 +102,19 @@ enum CmdError {
     IterWrongArgumentType,
     NoCmd,
     NoSuchWord,
+}
+impl std::fmt::Debug for CmdError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use CmdError::*;
+        match self {
+            IterDefault => write!(f, "Usage -I <num>"),
+            InputDefault => write!(f, "Usage -i <input>"),
+            SingleWordDefault => write!(f, "Usage -w <word>"),
+            IterWrongArgumentType => write!(f, "Numbers of iteration must be a unsigned integer"),
+            NoCmd => write!(f, "No such command"),
+            NoSuchWord => write!(f, "No such word"),
+        }
+    }
 }
 impl std::fmt::Display for CmdError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -128,7 +138,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut iterations: usize = 1_000_000;
 
     let size = args.into_iter().len();
-    if size > 2 {
+    if size > 1 {
         if let Some(_) = args.next() {
             while let Some(val) = args.next() {
                 let mval: &str = &val.to_string();
