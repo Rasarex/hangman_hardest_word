@@ -19,7 +19,7 @@ struct Pattern {
     pub pattern: String,
     pub blanks: u32,
 }
-fn guess(word: &String, word_list: &Vec<String>) -> Result<u32, String> {
+fn guess(word: &str, word_list: &[String]) -> Result<u32, String> {
     let mut quesses = 0_u32;
     let mut guessed: String = String::from("");
     let lowercase_word = &word.to_ascii_lowercase();
@@ -27,12 +27,14 @@ fn guess(word: &String, word_list: &Vec<String>) -> Result<u32, String> {
         pattern: (0..word.chars().count()).map(|_| ".").collect::<String>(),
         blanks: word.chars().count() as u32,
     };
-    let mut words = word_list.clone();
-    words = words
+    let mut words = word_list.to_owned();
+    let size_filtered = words
         .drain_filter(|v| v.chars().count() == word.chars().count())
         .collect::<_>();
+    words = size_filtered;
     'outer: loop {
-        let freq = frequency(&mut words, 32);
+        let count = words.len() / 32;
+        let freq = frequency(&mut words, count);
         let mut count_vec: Vec<(&char, &usize)> = freq.iter().collect();
         count_vec.sort_by(|a, b| b.1.cmp(a.1));
 
@@ -53,7 +55,7 @@ fn guess(word: &String, word_list: &Vec<String>) -> Result<u32, String> {
             quesses += 1;
             if lowercase_word.contains(letter) {
                 let mut new_pattern = String::with_capacity(match_pattern.pattern.chars().count());
-                let mut iter = match_pattern.pattern.chars().into_iter();
+                let mut iter = match_pattern.pattern.chars();
                 for i in word.chars() {
                     let b = iter.next().unwrap();
                     if i == letter {
@@ -71,7 +73,7 @@ fn guess(word: &String, word_list: &Vec<String>) -> Result<u32, String> {
             } else {
                 let reg = Regex::new(match_pattern.pattern.as_str())
                     .expect("Incorrect regex, logic of program failed");
-                let filtered_words = words.drain_filter(|v| !reg.is_match(v)).collect::<Vec<_>>();
+                let filtered_words = words.drain_filter(|v| reg.is_match(v)).collect::<Vec<_>>();
                 //use not filtered words ...
                 words = filtered_words;
                 if words.is_empty() {
@@ -85,34 +87,93 @@ fn guess(word: &String, word_list: &Vec<String>) -> Result<u32, String> {
     Ok(quesses)
 }
 fn main() -> std::io::Result<()> {
-    if let Ok(lines) = read_lines("words.txt") {
+    let args = &mut std::env::args();
+    let mut single_word_mode = false;
+    let mut single_word = String::new();
+    let mut filename = String::from("words.txt");
+    let mut iterations: usize = 1_000_000;
+
+    let size = args.into_iter().len();
+    if size > 2 {
+        if let Some(_) = args.next() {
+            while let Some(val) = args.next() {
+                let mval: &str = &val.to_string();
+                match mval {
+                    "-i" => {
+                        if let Some(val) = args.next() {
+                            filename = val.to_owned();
+                        } else {
+                            eprintln!("Usage: -i <path>");
+                        }
+                    }
+                    "-I" => {
+                        if let Some(val) = args.next() {
+                            iterations = val
+                                .parse::<usize>()
+                                .expect("Numbers of iterations must be a number");
+                        } else {
+                            eprintln!("Usage: -I <num>");
+                        }
+                    }
+                    "-w" => {
+                        if let Some(val) = args.next() {
+                            single_word = val;
+                            single_word_mode = true;
+                        } else {
+                            eprintln!("Usage -w <word>");
+                        }
+                    }
+                    _ => {
+                        eprintln!("No such command");
+                    }
+                }
+            }
+        }
+    }
+    if let Ok(lines) = read_lines(filename) {
         let words: Vec<String> = lines.collect::<Result<_, _>>().unwrap();
         let lines = words.to_owned();
-        let mut max = 0;
-        let mut hardest_word: String = String::new();
-        let mut i: usize = 0;
-        for word in lines {
-            match guess(&word, &words) {
-                Ok(new_max) => {
-                    if new_max > max {
-                        max = new_max;
-                        hardest_word = word;
-                    }
-                    i += 1;
-                    print!(
-                        "\r Worst to guess {: >10} with {} guesses iteration {: >6} of {: >10}",
+        if single_word_mode {
+            match guess(&single_word, &lines) {
+                Ok(amount) => {
+                    print!("Word {} took {} guesses",single_word, amount);
+                }
+                Err(e) => {
+                    eprintln!("{}", e);
+                }
+            }
+        } else {
+            let mut max = 0;
+            let mut hardest_word: String = String::new();
+            let mut i: usize = 0;
+            for word in lines {
+                match guess(&word, &words) {
+                    Ok(new_max) => {
+                        if new_max > max {
+                            max = new_max;
+                            hardest_word = word;
+                        }
+                        i += 1;
+                        print!(
+                        "\r Worst to guess {: >10} with {: >2} guesses iteration {: >6} of {: >10}",
                         hardest_word,
                         max,
                         i,
                         words.len()
                     );
-                    io::stdout().flush().unwrap();
+                        io::stdout().flush().unwrap();
+                    }
+                    Err(e) => {
+                        io::stdout().flush().unwrap();
+                        eprintln!("\n{} {}\n", e, word);
+                    }
                 }
-                Err(e) => {
-                    println!("{:?}", e);
+                if i == iterations as usize {
+                    break;
                 }
             }
         }
     }
+    println!();
     Ok(())
 }

@@ -50,16 +50,10 @@ fn merge(first: &mut HashMap<char, usize>, second: &HashMap<char, usize>) {
         push_map(first, *key, *value);
     }
 }
-
 fn push_map(first: &mut HashMap<char, usize>, key: char, value: usize) {
-    if key.is_numeric() || key.is_ascii_punctuation() {
-        return;
-    }
     let key = key.to_ascii_lowercase();
-
-    if first.contains_key(&key) {
-        *first.get_mut(&key).unwrap() += value;
-    } else {
-        first.insert(key, value);
-    }
+    first
+        .entry(key)
+        .and_modify(|v| *v += value)
+        .or_insert(value);
 }
