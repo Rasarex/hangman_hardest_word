@@ -19,7 +19,7 @@ struct Pattern {
     pub pattern: String,
     pub blanks: u32,
 }
-fn guess(word: &str, word_list: &[String]) -> Result<u32, String> {
+fn guess(word: &str, word_list: &[String]) -> Result<u32, Box<CmdError>> {
     let mut quesses = 0_u32;
     let mut guessed: String = String::from("");
     let lowercase_word = &word.to_ascii_lowercase();
@@ -34,10 +34,16 @@ fn guess(word: &str, word_list: &[String]) -> Result<u32, String> {
         let freq = frequency(&mut words, count);
         let mut count_vec: Vec<(&char, &usize)> = freq.iter().collect();
         use std::cmp::Ordering;
-        count_vec.sort_by(|a, b| if b.1.cmp(a.1) == Ordering::Equal { a.0.cmp(b.0)} else {b.1.cmp(a.1)});
         // make sort deterministic
+        count_vec.sort_by(|a, b| {
+            if b.1.cmp(a.1) == Ordering::Equal {
+                a.0.cmp(b.0)
+            } else {
+                b.1.cmp(a.1)
+            }
+        });
         count_vec.drain_filter(|v| guessed.contains(*v.0));
-        
+
         let mut iterator = count_vec.iter();
         loop {
             let letter;
@@ -65,7 +71,6 @@ fn guess(word: &str, word_list: &[String]) -> Result<u32, String> {
                     }
                 }
                 match_pattern.pattern = new_pattern;
-                // println!("{}",match_pattern.pattern);
                 if match_pattern.blanks == 0 {
                     break 'outer;
                 }
@@ -75,10 +80,14 @@ fn guess(word: &str, word_list: &[String]) -> Result<u32, String> {
                 words.drain_filter(|v| !reg.is_match(v));
                 //use not filtered words ...
                 if words.is_empty() {
-                    return Err("Not such word".to_string());
+                    return Err(Box::new(CmdError::NoSuchWord));
                 }
                 if words.len() == 1 {
-                    return Ok(quesses);
+                    if word == words.iter().next().unwrap() {
+                        return Ok(quesses);
+                    } else {
+                        return Err(Box::new(CmdError::NoSuchWord));
+                    }
                 }
                 break;
             }
@@ -87,7 +96,31 @@ fn guess(word: &str, word_list: &[String]) -> Result<u32, String> {
 
     Ok(quesses)
 }
-fn main() -> std::io::Result<()> {
+use std::fmt;
+#[derive(Debug, Clone)]
+enum CmdError {
+    IterDefault,
+    InputDefault,
+    SingleWordDefault,
+    IterWrongArgumentType,
+    NoCmd,
+    NoSuchWord,
+}
+impl std::fmt::Display for CmdError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use CmdError::*;
+        match self {
+            IterDefault => write!(f, "Usage -I <num>"),
+            InputDefault => write!(f, "Usage -i <input>"),
+            SingleWordDefault => write!(f, "Usage -w <word>"),
+            IterWrongArgumentType => write!(f, "Numbers of iteration must be a unsigned integer"),
+            NoCmd => write!(f, "No such command"),
+            NoSuchWord => write!(f, "No such word"),
+        }
+    }
+}
+impl std::error::Error for CmdError {}
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = &mut std::env::args();
     let mut single_word_mode = false;
     let mut single_word = String::new();
@@ -104,16 +137,18 @@ fn main() -> std::io::Result<()> {
                         if let Some(val) = args.next() {
                             filename = val.to_owned();
                         } else {
-                            eprintln!("Usage: -i <path>");
+                            return Err(Box::new(CmdError::InputDefault));
                         }
                     }
                     "-I" => {
                         if let Some(val) = args.next() {
-                            iterations = val
-                                .parse::<usize>()
-                                .expect("Numbers of iterations must be a number");
+                            if let Ok(num_of_iter) = val.parse::<usize>() {
+                                iterations = num_of_iter
+                            } else {
+                                return Err(Box::new(CmdError::IterWrongArgumentType));
+                            }
                         } else {
-                            eprintln!("Usage: -I <num>");
+                            return Err(Box::new(CmdError::IterDefault));
                         }
                     }
                     "-w" => {
@@ -121,11 +156,11 @@ fn main() -> std::io::Result<()> {
                             single_word = val;
                             single_word_mode = true;
                         } else {
-                            eprintln!("Usage -w <word>");
+                            return Err(Box::new(CmdError::SingleWordDefault));
                         }
                     }
                     _ => {
-                        eprintln!("No such command");
+                        return Err(Box::new(CmdError::NoCmd));
                     }
                 }
             }
@@ -135,40 +170,28 @@ fn main() -> std::io::Result<()> {
         let words: Vec<String> = lines.collect::<Result<_, _>>().unwrap();
         let lines = words.to_owned();
         if single_word_mode {
-            match guess(&single_word, &lines) {
-                Ok(amount) => {
-                    print!("Word {} took {} guesses", single_word, amount);
-                }
-                Err(e) => {
-                    eprintln!("{}", e);
-                }
-            }
+            let amount = guess(&single_word, &lines)?;
+            print!("Word {} took {} guesses", single_word, amount);
         } else {
             let mut max = 0;
             let mut hardest_word: String = String::new();
             let mut i: usize = 0;
             for word in lines {
-                match guess(&word, &words) {
-                    Ok(new_max) => {
-                        if new_max > max {
-                            max = new_max;
-                            hardest_word = word;
-                        }
-                        i += 1;
-                        print!(
-                        "\r Worst to guess {: >12} with {: >2} guesses iteration {: >6} of {: >10}",
-                        hardest_word,
-                        max,
-                        i,
-                        words.len()
-                    );
-                        io::stdout().flush().unwrap();
-                    }
-                    Err(e) => {
-                        io::stdout().flush().unwrap();
-                        eprintln!("\n{} {}\n", e, word);
-                    }
+                let new_max = guess(&word, &words)?;
+                if new_max > max {
+                    max = new_max;
+                    hardest_word = word;
                 }
+                i += 1;
+                print!(
+                    "\r Worst to guess {: >12} with {: >2} guesses iteration {: >6} of {: >10}",
+                    hardest_word,
+                    max,
+                    i,
+                    words.len()
+                );
+                io::stdout().flush().unwrap();
+
                 if i == iterations as usize {
                     break;
                 }
