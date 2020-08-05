@@ -28,29 +28,28 @@ fn guess(word: &str, word_list: &[String]) -> Result<u32, String> {
         blanks: word.chars().count() as u32,
     };
     let mut words = word_list.to_owned();
-    let size_filtered = words
-        .drain_filter(|v| v.chars().count() == word.chars().count())
-        .collect::<_>();
-    words = size_filtered;
+    words.drain_filter(|v| v.chars().count() != word.chars().count());
     'outer: loop {
         let count = words.len() / 32;
         let freq = frequency(&mut words, count);
         let mut count_vec: Vec<(&char, &usize)> = freq.iter().collect();
-        count_vec.sort_by(|a, b| b.1.cmp(a.1));
-
+        use std::cmp::Ordering;
+        count_vec.sort_by(|a, b| if b.1.cmp(a.1) == Ordering::Equal { a.0.cmp(b.0)} else {b.1.cmp(a.1)});
+        // make sort deterministic
+        count_vec.drain_filter(|v| guessed.contains(*v.0));
+        
         let mut iterator = count_vec.iter();
         loop {
-            let mut letter = *iterator.next().unwrap().0;
-            while guessed.contains(letter) {
-                if let Some(lett) = iterator.next() {
-                    letter = *lett.0;
-                } else {
-                    println!("{:?}", words);
-                    println!("{}", lowercase_word);
-                    println!("{}", match_pattern.pattern);
-                    panic!("Should've not happend");
-                }
+            let letter;
+            if let Some(lett) = iterator.next() {
+                letter = *lett.0;
+            } else {
+                println!("{:?}", words);
+                println!("{}", lowercase_word);
+                println!("{}", match_pattern.pattern);
+                panic!("Should've not happend");
             }
+
             guessed.push(letter);
             quesses += 1;
             if lowercase_word.contains(letter) {
@@ -73,11 +72,13 @@ fn guess(word: &str, word_list: &[String]) -> Result<u32, String> {
             } else {
                 let reg = Regex::new(match_pattern.pattern.as_str())
                     .expect("Incorrect regex, logic of program failed");
-                let filtered_words = words.drain_filter(|v| reg.is_match(v)).collect::<Vec<_>>();
+                words.drain_filter(|v| !reg.is_match(v));
                 //use not filtered words ...
-                words = filtered_words;
                 if words.is_empty() {
                     return Err("Not such word".to_string());
+                }
+                if words.len() == 1 {
+                    return Ok(quesses);
                 }
                 break;
             }
@@ -136,7 +137,7 @@ fn main() -> std::io::Result<()> {
         if single_word_mode {
             match guess(&single_word, &lines) {
                 Ok(amount) => {
-                    print!("Word {} took {} guesses",single_word, amount);
+                    print!("Word {} took {} guesses", single_word, amount);
                 }
                 Err(e) => {
                     eprintln!("{}", e);
@@ -155,7 +156,7 @@ fn main() -> std::io::Result<()> {
                         }
                         i += 1;
                         print!(
-                        "\r Worst to guess {: >10} with {: >2} guesses iteration {: >6} of {: >10}",
+                        "\r Worst to guess {: >12} with {: >2} guesses iteration {: >6} of {: >10}",
                         hardest_word,
                         max,
                         i,

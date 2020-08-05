@@ -32,6 +32,7 @@ pub fn frequency(input: &mut Vec<String>, worker_count: usize) -> HashMap<char, 
     for j in rx {
         merge(&mut map, &j);
     }
+
     map
 }
 
