@@ -3,6 +3,8 @@ use std::fs::File;
 // use std::io::prelude::*;
 use std::io::{self, BufRead};
 use std::path::Path;
+mod errors;
+use errors::*;
 mod frequency;
 use frequency::*;
 use std::collections::HashMap;
@@ -119,43 +121,6 @@ fn guess(
 
     Ok(quesses)
 }
-use std::fmt;
-#[derive(Clone)]
-enum CmdError {
-    IterDefault,
-    InputDefault,
-    SingleWordDefault,
-    IterWrongArgumentType,
-    NoCmd,
-    NoSuchWord,
-}
-impl std::fmt::Debug for CmdError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use CmdError::*;
-        match self {
-            IterDefault => write!(f, "Usage -I <num>"),
-            InputDefault => write!(f, "Usage -i <input>"),
-            SingleWordDefault => write!(f, "Usage -w <word>"),
-            IterWrongArgumentType => write!(f, "Numbers of iteration must be a unsigned integer"),
-            NoCmd => write!(f, "No such command"),
-            NoSuchWord => write!(f, "No such word"),
-        }
-    }
-}
-impl std::fmt::Display for CmdError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use CmdError::*;
-        match self {
-            IterDefault => write!(f, "Usage -I <num>"),
-            InputDefault => write!(f, "Usage -i <input>"),
-            SingleWordDefault => write!(f, "Usage -w <word>"),
-            IterWrongArgumentType => write!(f, "Numbers of iteration must be a unsigned integer"),
-            NoCmd => write!(f, "No such command"),
-            NoSuchWord => write!(f, "No such word"),
-        }
-    }
-}
-impl std::error::Error for CmdError {}
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = &mut std::env::args();
     let mut single_word_mode = false;
