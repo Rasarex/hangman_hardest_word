@@ -1,14 +1,15 @@
-
 use std::fmt;
+#[allow(dead_code)]
 #[derive(Clone)]
 pub enum CmdError {
     IterDefault,
     InputDefault,
     SingleWordDefault,
     IterWrongArgumentType,
-    NoCmd,
     NoSuchWord,
+    NoCmd
 }
+
 impl std::fmt::Debug for CmdError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use CmdError::*;
