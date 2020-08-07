@@ -8,8 +8,9 @@ pub struct Frequency<'a> {
     pub map: HashMap<char, usize>,
     pub pool: &'a ThreadPool,
 }
+
 impl<'a> Frequency<'a> {
-    pub fn frequency(&mut self, input: &mut Vec<String>) {
+    pub fn frequency(&mut self, input: &Vec<String>) {
         self.map.clear();
         let (tx, rx) = mpsc::channel();
         let size = input.len();
@@ -18,7 +19,6 @@ impl<'a> Frequency<'a> {
             self.map = single_thread(input);
             return;
         }
-
         for slice in input.chunks(each) {
             let clone = tx.clone();
             let slice = slice.to_owned();
@@ -39,8 +39,21 @@ impl<'a> Frequency<'a> {
             merge(&mut self.map, &j);
         }
     }
+    pub fn to_sorted_vec(&mut self) -> Vec<(&char, &usize)> {
+        let mut count_vec: Vec<(&char, &usize)> = self.map.iter().collect();
+        use std::cmp::Ordering;
+        // make sort deterministic
+        count_vec.sort_by(|a, b| {
+            if b.1.cmp(a.1) == Ordering::Equal {
+                a.0.cmp(b.0)
+            } else {
+                b.1.cmp(a.1)
+            }
+        });
+        return count_vec;
+    }
 }
-fn single_thread(input: &mut Vec<String>) -> HashMap<char, usize> {
+fn single_thread(input: &Vec<String>) -> HashMap<char, usize> {
     let mut map = HashMap::new();
     for line in input.iter() {
         for c in line.chars() {

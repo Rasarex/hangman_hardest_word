@@ -6,9 +6,13 @@ pub struct Settings {
     pub path: String,
     pub iterations: usize,
 }
-impl Default for Settings{
-    fn default() -> Settings{
-        Settings{single_word: None,path :String::from("words.txt"), iterations : 1_000_000}
+impl Default for Settings {
+    fn default() -> Settings {
+        Settings {
+            single_word: None,
+            path: String::from("words.txt"),
+            iterations: 1_000_000,
+        }
     }
 }
 

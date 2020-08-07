@@ -7,7 +7,7 @@ pub enum CmdError {
     SingleWordDefault,
     IterWrongArgumentType,
     NoSuchWord,
-    NoCmd
+    NoCmd,
 }
 
 impl std::fmt::Debug for CmdError {

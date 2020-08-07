@@ -14,7 +14,7 @@ use std::io::{self, BufRead};
 use std::path::Path;
 use threadpool::ThreadPool;
 
-fn is_match(word: &String, pattern: &String, negative_match: &String) -> bool {
+fn is_match(word: &str, pattern: &String, negative_match: &String) -> bool {
     let mut pattern_iter = pattern.chars();
     for letter in word.chars() {
         let pattern_letter = pattern_iter.next().unwrap();
@@ -30,7 +30,19 @@ fn is_match(word: &String, pattern: &String, negative_match: &String) -> bool {
     }
     true
 }
-
+fn inprint_letter_on_pattern(word: &String, letter: char, pattern: &String) -> String {
+    let mut new_pattern = String::with_capacity(pattern.chars().count());
+    let mut iter = pattern.chars();
+    for i in word.chars() {
+        let b = iter.next().unwrap();
+        if i == letter {
+            new_pattern.push(letter);
+        } else {
+            new_pattern.push(b);
+        }
+    }
+    new_pattern
+}
 fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
 where
     P: AsRef<Path>,
@@ -38,16 +50,81 @@ where
     let file = File::open(filename)?;
     Ok(io::BufReader::new(file).lines())
 }
-struct Pattern {
-    pub pattern: String,
-    pub blanks: u32,
-}
 
+fn guess_all<'a>(word_list: &[String], pool: &ThreadPool, word_size: usize) -> Vec<(String, u32)> {
+    struct Guesses {
+        pub pattern: String,
+        pub matching_words: Vec<String>,
+        pub guessing_depth: usize,
+        pub guessed: String,
+    }
+    let mut recording: Vec<(String, u32)> = Vec::new();
+    let mut chunks: Vec<Guesses> = Vec::new();
+    let mut freq = Frequency {
+        map: HashMap::<char, usize>::new(),
+        pool: pool,
+    };
+
+    let pattern = (0..word_size).map(|_| '.').collect::<String>();
+    chunks.push(Guesses {
+        pattern,
+        matching_words: Vec::from(word_list),
+        guessing_depth: 0,
+        guessed: "".to_owned(),
+    });
+    loop {
+        let mut new_chunks: Vec<Guesses> = Vec::new();
+        if chunks.len() == 0 {break;}
+        for chunk in &mut chunks {
+            if chunk.matching_words.len() == 0 {continue;}
+            freq.frequency(&chunk.matching_words);
+            let mut sorted = freq.to_sorted_vec();
+            sorted.drain_filter(|v| chunk.guessed.contains(*v.0));
+            if sorted.len() == 0 { continue;}
+            let letter = *sorted.iter().next().unwrap().0;
+
+            let mut guessed = chunk.guessed.to_owned();
+            guessed.push(letter);
+            let owned = guessed.to_owned();
+            while chunk.matching_words.len() > 0 {
+                let word = chunk.matching_words.iter().next().unwrap();
+                let new_pattern = inprint_letter_on_pattern(word, letter, &chunk.pattern);
+                // let owned = guessed.to_owned();
+                let matching_to_new_pattern = chunk
+                    .matching_words
+                    .drain_filter(|v| is_match(v, &new_pattern, &owned))
+                    .collect::<Vec<_>>();
+                if matching_to_new_pattern.len() == 1 {
+                    recording.push((
+                        matching_to_new_pattern.iter().next().unwrap().clone(),
+                        (chunk.guessing_depth + 1) as u32,
+                    ));
+                    continue;
+                } else {
+                    new_chunks.push(Guesses {
+                        pattern: new_pattern,
+                        guessed: guessed.to_owned(),
+                        matching_words: matching_to_new_pattern,
+                        guessing_depth: chunk.guessing_depth + 1,
+                    });
+                }
+            }
+        }
+        drop(chunks);
+        chunks = new_chunks;
+    }
+    recording
+}
 fn guess(
     word: &str,
     word_list: &[String],
     pool: &ThreadPool,
 ) -> Result<u32, Box<dyn std::error::Error>> {
+    struct Pattern {
+        pub pattern: String,
+        pub blanks: u32,
+    }
+
     let mut quesses = 0_u32;
     let mut guessed: String = String::from("");
     let mut freq: Frequency = Frequency {
@@ -64,17 +141,8 @@ fn guess(
         return Ok(1);
     }
     'outer: loop {
-        freq.frequency(&mut words);
-        let mut count_vec: Vec<(&char, &usize)> = freq.map.iter().collect();
-        use std::cmp::Ordering;
-        // make sort deterministic
-        count_vec.sort_by(|a, b| {
-            if b.1.cmp(a.1) == Ordering::Equal {
-                a.0.cmp(b.0)
-            } else {
-                b.1.cmp(a.1)
-            }
-        });
+        freq.frequency(&words);
+        let mut count_vec = freq.to_sorted_vec();
         count_vec.drain_filter(|v| guessed.contains(*v.0));
 
         let mut iterator = count_vec.iter();
@@ -112,7 +180,7 @@ fn guess(
                     return Err(Box::new(CmdError::NoSuchWord));
                 }
                 if words.len() == 1 {
-                    if word == words.iter().next().unwrap() {
+                    if word == *words.iter().next().unwrap() {
                         return Ok(quesses);
                     } else {
                         return Err(Box::new(CmdError::NoSuchWord));
@@ -128,7 +196,7 @@ fn guess(
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let settings = settings_from_args()?;
     if let Ok(lines) = read_lines(settings.path) {
-        let mut words: Vec<String> = lines.collect::<Result<_, _>>().unwrap();
+        let mut words: Vec<String> = lines.collect::<Result<Vec<String>, _>>().unwrap();
         if let Some(single_word) = settings.single_word {
             let pool = ThreadPool::new(WORKER_COUNT);
             words.drain_filter(|v| v.chars().count() != single_word.chars().count());
@@ -136,7 +204,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             print!("Word {} took {} guesses", single_word, amount);
         } else {
             let mut max = 0;
-            let mut i: usize = 0;
             let mut chunks: Vec<(Vec<String>, usize)> = Vec::new();
 
             for word in &words {
@@ -154,30 +221,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let workers = ThreadPool::new(chunks.len());
             let (tx, rx) = std::sync::mpsc::channel();
             println!("{}", chunks.len());
-            let iterations = settings.iterations;
+            // let iterations = settings.iterations;
             for words in chunks {
                 let sender = tx.clone();
                 let pool = workers.clone();
-                let lines = words.to_owned();
 
                 workers.execute(move || {
                     let mut hardest_word: String = String::new();
                     let mut max = 0;
-                    for word in lines.0 {
-                        if let Ok(new_max) = guess(&word, &words.0, &pool) {
-                            if new_max > max {
-                                max = new_max;
-                                hardest_word = word;
-                            }
-                            i += 1;
-
-                            if i >= iterations as usize {
-                                print!(" {} ",i);
-                                break;
-                            }
+                    let recording = guess_all(&words.0, &pool, words.1 );
+                    for (word,geusses) in recording{
+                        if geusses > max {
+                            hardest_word = (*word).to_string();
+                            max = geusses;
                         }
                     }
-                    // println!("{}: {:?}, {}",lines.1,hardest_word,max);
+                    
+                    println!("{}: {:?}, {}",words.1,hardest_word,max);
                     sender.send((hardest_word, max)).unwrap();
                 });
             }
