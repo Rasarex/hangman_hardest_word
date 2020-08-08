@@ -10,7 +10,7 @@ pub struct Frequency<'a> {
 }
 
 impl<'a> Frequency<'a> {
-    pub fn frequency(&mut self, input: &Vec<String>) {
+    pub fn frequency(&mut self, input: &Vec<&'static str>) {
         self.map.clear();
         let (tx, rx) = mpsc::channel();
         let size = input.len();
@@ -53,7 +53,7 @@ impl<'a> Frequency<'a> {
         return count_vec;
     }
 }
-fn single_thread(input: &Vec<String>) -> HashMap<char, usize> {
+fn single_thread(input: &Vec<&'static str>) -> HashMap<char, usize> {
     let mut map = HashMap::new();
     for line in input.iter() {
         for c in line.chars() {
@@ -69,7 +69,7 @@ fn merge(first: &mut HashMap<char, usize>, second: &HashMap<char, usize>) {
     }
 }
 fn push_map(first: &mut HashMap<char, usize>, key: char, value: usize) {
-    let key = key.to_ascii_lowercase();
+    // let key = key.to_ascii_lowercase();
     first
         .entry(key)
         .and_modify(|v| *v += value)
